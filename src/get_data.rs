@@ -19,8 +19,8 @@ pub type UserStats = HashMap<String, Option<UserStat>>;
 pub struct UserStat {
     pub id: String,
     pub username: String,
-    pub lengthvotes: usize,
-    pub lengthvotes_sum: usize,
+    pub lengthvotes: Option<usize>,
+    pub lengthvotes_sum: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

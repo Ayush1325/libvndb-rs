@@ -1,3 +1,5 @@
+use serde::de::DeserializeOwned;
+
 use crate::{
     get_data::{AuthInfo, UlistItems, UserStats, VndbStats},
     post_data::{QueryFormat, ResponseFormat},
@@ -33,43 +35,51 @@ impl Client {
         self.token = Some(token)
     }
 
-    pub async fn vndbstats(&self) -> Result<VndbStats, reqwest::Error> {
-        self.client.get(GET_STATS_URL).send().await?.json().await
+    pub async fn vndbstats(&self) -> Result<VndbStats, Error> {
+        self.get_request(GET_STATS_URL, &[], false).await
     }
 
-    pub async fn users_stats(&self, id_or_name: &[&str]) -> Result<UserStats, reqwest::Error> {
-        self.client
-            .get(GET_USER_URL)
-            .query(
-                &id_or_name
-                    .iter()
-                    .map(|s| ("q", *s))
-                    .collect::<Vec<(&str, &str)>>(),
-            )
-            .query(&[("fields", "lengthvotes,lengthvotes_sum")])
-            .send()
-            .await?
-            .json()
-            .await
+    pub async fn users_stats(&self, id_or_name: &[&str]) -> Result<UserStats, Error> {
+        let mut query = id_or_name
+            .iter()
+            .map(|s| ("q", *s))
+            .collect::<Vec<(&str, &str)>>();
+        query.push(("fields", "lengthvotes,lengthvotes_sum"));
+        self.get_request(GET_USER_URL, &query, false).await
     }
 
     pub async fn authinfo(&self) -> Result<AuthInfo, Error> {
-        let token = self.token()?;
-        Ok(self
-            .client
-            .get(GET_AUTHINFO_URL)
-            .header("Authorization", format!("token {}", token))
-            .send()
-            .await?
-            .json()
-            .await?)
+        self.get_request(GET_AUTHINFO_URL, &[], true).await
     }
 
     pub async fn ulist_labels(&self, user: Option<&str>) -> Result<UlistItems, Error> {
-        let req = self.client.get(GET_ULIST_URL).query(&[("fields", "count")]);
-        let req = match user {
-            Some(x) => req.query(&[("user", x)]),
-            None => req.header("Authorization", format!("token {}", self.token()?)),
+        let mut query = vec![("fields", "count")];
+        if let Some(x) = user {
+            query.push(("user", x))
+        }
+        self.get_request(GET_ULIST_URL, &query, user.is_none())
+            .await
+    }
+
+    pub async fn get_request<'a, T>(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        token_required: bool,
+    ) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        let req = self.client.get(url).query(query);
+        let req = match self.token() {
+            Ok(x) => req.header("Authorization", format!("token {}", x)),
+            Err(e) => {
+                if token_required {
+                    return Err(e);
+                } else {
+                    req
+                }
+            }
         };
         Ok(req.send().await?.json().await?)
     }
@@ -78,13 +88,20 @@ impl Client {
         &'a self,
         url: &'a str,
         body: &'a QueryFormat<'a>,
-    ) -> Result<ResponseFormat, reqwest::Error> {
+        token_required: bool,
+    ) -> Result<ResponseFormat, Error> {
         let req = self.client.post(url).json(&body);
         let req = match self.token() {
             Ok(token) => req.header("Authorization", format!("token {}", token)),
-            Err(_) => req,
+            Err(e) => {
+                if token_required {
+                    return Err(e);
+                } else {
+                    req
+                }
+            }
         };
-        req.send().await?.json().await
+        Ok(req.send().await?.json().await?)
     }
 }
 

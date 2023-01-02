@@ -1,18 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[macro_export]
-macro_rules! filter_items {
-    ( $( $x:expr ),* ) => {
-        {
-            let mut temp_filter_item: $crate::FilterItems = Vec::new();
-            $(
-                temp_filter_item.push($crate::FilterItem::from($x));
-            )*
-            temp_filter_item
-        }
-    };
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QueryFormat<'a> {
     pub filters: FilterItems,
@@ -147,6 +134,12 @@ pub enum FilterItem {
     V(FilterItems),
 }
 
+impl FilterItem {
+    pub fn from_json(json: serde_json::Value) -> Self {
+        serde_json::from_value(json).unwrap()
+    }
+}
+
 impl From<FilterItems> for FilterItem {
     fn from(value: FilterItems) -> Self {
         Self::V(value)
@@ -221,5 +214,77 @@ mod tests {
         ]));
         let test_item = FilterItem::from(&["abc", "="][..]);
         assert_eq!(test_item, ans);
+    }
+
+    #[test]
+    fn complex_macro_test() {
+        let ans = FilterItem::V(vec![
+            FilterItem::S("and".to_string()),
+            FilterItem::V(vec![
+                FilterItem::S("or".to_string()),
+                FilterItem::V(vec![
+                    FilterItem::S("lang".to_string()),
+                    FilterItem::S("=".to_string()),
+                    FilterItem::S("en".to_string()),
+                ]),
+                FilterItem::V(vec![
+                    FilterItem::S("lang".to_string()),
+                    FilterItem::S("=".to_string()),
+                    FilterItem::S("de".to_string()),
+                ]),
+                FilterItem::V(vec![
+                    FilterItem::S("lang".to_string()),
+                    FilterItem::S("=".to_string()),
+                    FilterItem::S("fr".to_string()),
+                ]),
+            ]),
+            FilterItem::V(vec![
+                FilterItem::S("olang".to_string()),
+                FilterItem::S("!=".to_string()),
+                FilterItem::S("ja".to_string()),
+            ]),
+            FilterItem::V(vec![
+                FilterItem::S("release".to_string()),
+                FilterItem::S("=".to_string()),
+                FilterItem::V(vec![
+                    FilterItem::S("and".to_string()),
+                    FilterItem::V(vec![
+                        FilterItem::S("released".to_string()),
+                        FilterItem::S(">=".to_string()),
+                        FilterItem::S("2020-01-01".to_string()),
+                    ]),
+                    FilterItem::V(vec![
+                        FilterItem::S("producer".to_string()),
+                        FilterItem::S("=".to_string()),
+                        FilterItem::V(vec![
+                            FilterItem::S("id".to_string()),
+                            FilterItem::S("=".to_string()),
+                            FilterItem::S("p30".to_string()),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]);
+        let temp = serde_json::json!([
+            "and",
+            [
+                "or",
+                ["lang", "=", "en"],
+                ["lang", "=", "de"],
+                ["lang", "=", "fr"]
+            ],
+            ["olang", "!=", "ja"],
+            [
+                "release",
+                "=",
+                [
+                    "and",
+                    ["released", ">=", "2020-01-01"],
+                    ["producer", "=", ["id", "=", "p30"]]
+                ]
+            ]
+        ]);
+        let temp = FilterItem::from_json(temp);
+        assert_eq!(temp, ans);
     }
 }
